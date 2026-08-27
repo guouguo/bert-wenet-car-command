@@ -1,0 +1,9 @@
+numpy
+onnxruntime
+PyAudio
+pypinyin
+python_speech_features
+scipy
+torch
+torchaudio
+transformers
