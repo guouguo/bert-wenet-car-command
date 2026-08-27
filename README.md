@@ -1,77 +1,113 @@
 # RK3568 WeNet + BERT Offline Voice Command System
 
-## 项目简介
+<p align="center">
+  <strong>面向 RK3568 的全离线端侧智能语音车控系统</strong><br>
+  Microphone → WeNet ASR → Text Normalization → Rule/BERT NLU → Reject Check → Command / GPIO
+</p>
 
-本项目是运行于 RK3568 的离线端侧智能语音车控系统。系统从双声道麦克风采集 16 kHz 音频，使用 WeNet RKNN 完成 ASR，并通过规则快速路径或 BERT RKNN 完成意图分类，最后输出 CAN-style command code；硬件演示版本进一步通过 Linux GPIO sysfs 控制车门与后备箱。
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-RK3568-0A66C2" alt="RK3568">
+  <img src="https://img.shields.io/badge/ASR-WeNet-2E8B57" alt="WeNet">
+  <img src="https://img.shields.io/badge/NLU-BERT-D97706" alt="BERT">
+  <img src="https://img.shields.io/badge/NPU-RKNNLite-7C3AED" alt="RKNNLite">
+  <img src="https://img.shields.io/badge/License-MIT-2EA44F" alt="MIT License">
+</p>
 
-## 核心功能
+## 项目亮点 / Project Highlights
 
-- 全离线 WeNet ASR 与 BERT NLU，主部署路径均使用 RKNN/NPU。
-- 2.5 秒滑动窗口、0.5 秒处理步长和基础音量门控。
-- 标准指令 exact-match fast path，以及 BERT 拒识与置信度 margin 检查。
-- GPIO 版本支持 wake/sleep、pre-roll、静音回睡和车门/后备箱控制。
-- 保留一个早期 WeNet RKNN + BERT ONNX Runtime 混合实现，用于展示项目演进。
+- **完整端侧链路**：从 16 kHz 双声道麦克风采集，到 WeNet ASR、文本归一化、规则/BERT 意图识别，再到命令码输出与 GPIO 硬件控制。
+- **RK3568 NPU 部署**：主部署路径中的 WeNet Encoder、CTC 与 BERT 均通过 RKNNLite 在 RK3568 NPU 上执行。
+- **双路意图决策**：标准指令优先走 exact-match fast path，复杂语义再进入 BERT，避免所有请求都经过慢路径。
+- **误触发控制**：BERT 路径包含拒识类别与 confidence margin 检查，对闲聊和低置信度结果进行拦截。
+- **面向真实硬件场景**：GPIO 版本包含 wake/sleep、pre-roll、静音回睡，以及车门/后备箱控制逻辑。
+
+## Recruiter Snapshot
+
+| 项目维度 | 实现内容 |
+| --- | --- |
+| 目标平台 | Rockchip RK3568 |
+| ASR | WeNet Encoder + CTC，RKNNLite/NPU |
+| NLU | Rule fast path + BERT RKNN fallback |
+| 音频输入 | 16 kHz、16-bit、双声道采集后混合为 mono |
+| 实时策略 | 2.5 s 滑动窗口、0.5 s 处理步长、基础音量门控 |
+| 稳定性策略 | 拒识类别、margin threshold、wake/sleep、pre-roll |
+| 硬件控制 | Linux sysfs GPIO，控制四车门与后备箱 |
+| 模型分发 | Git 不跟踪模型二进制，运行模型通过 GitHub Release 提供 |
 
 ## System Architecture
 
 ```mermaid
 flowchart LR
-    A[Microphone] --> B[16 kHz Audio]
-    B --> C[Sliding Window / Wake-up]
-    C --> D[WeNet Encoder RKNN]
-    D --> E[WeNet CTC RKNN]
-    E --> F[ASR Text]
-    F --> G[Normalization]
-    G --> H{Exact rule match?}
-    H -->|Yes| I[Fast Rule Path]
-    H -->|No| J[BERT RKNN]
-    J --> K[Intent]
-    K --> L[Reject / Confidence Check]
-    I --> M[Command Code]
+    A[Microphone] --> B[16 kHz Stereo Audio]
+    B --> C[Mix to Mono / Sliding Window]
+    C --> D[Wake-up / Audio Gate]
+    D --> E[WeNet Encoder RKNN]
+    E --> F[WeNet CTC RKNN]
+    F --> G[ASR Text]
+    G --> H[Normalization]
+    H --> I{Exact rule match?}
+    I -->|Yes| J[Fast Rule Path]
+    I -->|No| K[BERT RKNN]
+    K --> L[Reject / Margin Check]
+    J --> M[Command Code]
     L --> M
-    M --> N[GPIO]
-    N --> O[Door / Trunk]
+    M --> N[Console Output]
+    M --> O[GPIO Demo]
+    O --> P[Door / Trunk]
 ```
 
-## 项目目录
+## Engineering Challenges & Solutions
 
-```text
-.
-├── bert_wenet_2rknn.py
-├── bert_wenet_2rknn_gpio.py
-├── bert_door_command_model_pinyin/
-├── units.txt
-├── models/
-├── tools/
-├── examples/
-└── assets/audio/
+| 工程问题 | 处理方式 |
+| --- | --- |
+| 标准指令无需每次都进入 BERT | 使用 `STRICT_COMMANDS` + 哈希 exact-match fast path，未命中再进入 BERT |
+| BERT 误识别可能导致误触发 | 使用拒识类别，并在 BERT 路径加入 margin threshold 检查 |
+| 唤醒时容易丢失语音开头 | GPIO 版本使用 pre-roll 环形缓冲区保存唤醒前音频 |
+| 长时间无有效语音需要降低持续工作状态 | GPIO 版本根据静音时长自动回到 sleep 状态 |
+| 端侧模型需要与 RK3568 NPU 运行环境匹配 | WeNet Encoder、CTC 和 BERT 使用 RKNNLite runtime 加载 RKNN 模型 |
+| 语义结果需要映射到真实硬件动作 | 将意图映射为 CAN-style command code，并在硬件版本中进一步映射到 GPIO |
+
+## Core Applications
+
+### `bert_wenet_2rknn.py`
+
+主部署程序，完成：
+
+- 双声道麦克风采集与 mono 混合；
+- WeNet RKNN ASR；
+- 文本归一化；
+- exact-match fast path；
+- BERT RKNN 意图分类；
+- 拒识与低置信度拦截；
+- CAN-style command code 输出。
+
+### `bert_wenet_2rknn_gpio.py`
+
+硬件演示程序，在主链路基础上进一步加入：
+
+- wake/sleep 状态；
+- 能量唤醒；
+- pre-roll 防吞字；
+- 静音回睡；
+- Linux sysfs GPIO；
+- 四车门与后备箱控制。
+
+## Quick Start
+
+### 1. Clone
+
+```bash
+git clone https://github.com/guouguo/bert-wenet-car-command.git
+cd bert-wenet-car-command
 ```
 
-`examples/` contains an earlier hybrid CPU/NPU implementation. The primary deployment uses RKNN for both WeNet and BERT.
+### 2. 下载运行模型
 
-> Note: `examples/bert_wenet_rknn.py` is an archival hybrid CPU/NPU example.  
->
-> Its historical ONNX/RKNN model files are not included in this repository.
+运行所需的 4 个 RKNN 模型通过 GitHub Release 提供：
 
-## Hardware Platform
+[Download RK3568 Runtime Models](https://github.com/guouguo/bert-wenet-car-command/releases/tag/v1.0-models)
 
-- SoC: Rockchip RK3568
-- Audio input: 16 kHz, 16-bit, stereo microphone input mixed to mono by the application
-- Accelerator: RKNNLite on the RK3568 NPU
-- GPIO interface: legacy Linux sysfs GPIO (`/sys/class/gpio`)
-
-## RK3568 Deployment
-
-1. 在 RK3568 上准备与目标系统匹配的 Python、音频驱动和 Rockchip RKNN runtime 环境。
-2. 安装 `requirements.txt` 中的普通 Python 依赖。
-3. 将运行模型放入 `models/`，文件名须与下节一致。
-4. 从项目根目录启动程序，以保证相对路径正确。
-
-RKNNLite runtime must be installed using the Rockchip RKNN runtime environment appropriate for the RK3568 target. 本项目不将 `rknnlite` 作为普通 PyPI 依赖声明。
-
-## Model Files
-
-Git 不跟踪 RKNN/ONNX 等大型模型。两个同名 BERT 源文件大小相同但 SHA256 不同，因此审计中未将它们合并；GPIO 版本在整理副本中使用独立文件名。
+下载后放入：
 
 ```text
 models/
@@ -81,35 +117,64 @@ models/
 └── distill2_ctc_T256.rknn
 ```
 
-运行所需的 RKNN 模型通过 GitHub Release 提供：
+### 3. 安装普通 Python 依赖
 
-https://github.com/guouguo/bert-wenet-car-command/releases/tag/v1.0-models
+```bash
+pip install -r requirements.txt
+```
 
-下载后请将 4 个 `.rknn` 文件放入项目根目录下的 `models/` 目录。
+> RKNNLite runtime 需要根据 RK3568 目标系统单独安装 Rockchip 对应运行环境，本项目不将 `rknnlite` 作为普通 PyPI 依赖声明。
 
-## Dependencies
+### 4. 运行
 
-普通 Python 依赖见 `requirements.txt`。此外需要：
-
-- 与 RK3568 系统匹配的 Rockchip RKNNLite runtime；
-- 可用的 PortAudio/PyAudio 音频环境；
-- GPIO 演示所需的 sysfs GPIO 权限与对应内核支持。
-
-## Usage
-
-滑动窗口演示：
+滑动窗口版本：
 
 ```bash
 python3 bert_wenet_2rknn.py
 ```
 
-GPIO 硬件演示（默认上电休眠）：
+GPIO 硬件版本：
 
 ```bash
 python3 bert_wenet_2rknn_gpio.py --mic_device 0 --wake_enable 1 --start_asleep 1
 ```
 
-运行前请自行核对麦克风设备号、GPIO 编号、模型兼容性和硬件安全条件。本次整理仅执行静态检查，未初始化 RKNN、未采集音频、未操作 GPIO。
+## Repository Structure
+
+```text
+.
+├── bert_wenet_2rknn.py                  # 主部署程序
+├── bert_wenet_2rknn_gpio.py             # GPIO / wake-sleep 硬件演示
+├── bert_door_command_model_pinyin/      # BERT tokenizer/config
+├── units.txt                            # WeNet token units
+├── models/                              # 本地运行模型目录（模型二进制不进入 Git）
+├── tools/                               # RKNN 文件测试工具
+├── examples/                            # 历史实现示例
+├── assets/audio/                        # 音频资产说明
+├── requirements.txt
+├── PROJECT_AUDIT.md
+└── LICENSE
+```
+
+> Note: `examples/bert_wenet_rknn.py` is an archival hybrid CPU/NPU example. Its historical ONNX/RKNN model files are not included in this repository.
+
+## Runtime Models
+
+| 模型 | 用途 | 使用程序 |
+| --- | --- | --- |
+| `bert_6L6H_nq.rknn` | BERT NLU | `bert_wenet_2rknn.py` |
+| `bert_6L6H_nq_gpio.rknn` | BERT NLU | `bert_wenet_2rknn_gpio.py` |
+| `distill2_encoder_T256_quan_mmsehybird099.rknn` | WeNet Encoder | 两个主程序共用 |
+| `distill2_ctc_T256.rknn` | WeNet CTC | 两个主程序共用 |
+
+两个 BERT 源模型文件原本同名且大小相同，但 SHA256 不同，因此在整理时保留为两个独立运行依赖。
+
+## Hardware Platform
+
+- **SoC**: Rockchip RK3568
+- **Audio input**: 16 kHz, 16-bit, stereo microphone input mixed to mono by the application
+- **Accelerator**: RKNNLite on RK3568 NPU
+- **GPIO interface**: legacy Linux sysfs GPIO (`/sys/class/gpio`)
 
 ## GPIO Mapping
 
@@ -121,13 +186,26 @@ python3 bert_wenet_2rknn_gpio.py --mic_device 0 --wake_enable 1 --start_asleep 1
 | 右后门 | 100 | `0x41` | `0x42` |
 | 后备箱 | 99 | `0x51` | `0x52` |
 
-## Limitations
+## Design Notes
 
-- 相对路径要求从仓库根目录启动。
-- GPIO sysfs 接口可能在部分 Linux 内核中不可用或需要额外权限。
-- 模型与 RKNN runtime/driver 的兼容性需在实际 RK3568 设备上人工验证。
-- 仓库不包含原始真人录音，也不提供准确率、延迟、RTF、内存、功耗或 NPU 利用率结论。
+- 主程序依赖从仓库根目录启动，以保证相对模型路径正确。
+- `.rknn`、`.onnx`、`.pt`、`.pth`、`.bin`、`.safetensors` 等模型/权重文件均不进入 Git history。
+- 原始真人语音与测试 CSV 未纳入公开仓库。
+- GPIO sysfs 接口在部分 Linux 内核中可能不可用，或需要额外权限。
+- 模型与 RKNN runtime/driver 的兼容性需要在目标 RK3568 环境中确认。
+
+## Current Scope
+
+当前仓库重点展示 **RK3568 端侧语音链路的工程实现与部署结构**。仓库没有发布未经实际硬件验证的准确率、延迟、RTF、内存、功耗或 NPU 利用率结论。
+
+如果后续补充真实 RK3568 实机测试，可进一步加入：
+
+- 端到端延迟；
+- ASR / NLU 实测效果；
+- 峰值内存；
+- 模型加载时间；
+- 实机演示 GIF / 视频。
 
 ## License
 
-项目整理代码与文档采用 MIT License，详见 `LICENSE`。Third-party frameworks and runtime components remain subject to their respective licenses.
+项目整理代码与文档采用 MIT License，详见 [`LICENSE`](LICENSE)。Third-party frameworks and runtime components remain subject to their respective licenses.
