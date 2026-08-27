@@ -11,4 +11,4 @@
 
 两个 BERT 源文件原本同名且大小相同，但 SHA256 不同，因此不能视为重复；整理时为 GPIO 版本使用了独立名称。
 
-模型 Release 创建成功后，本文件将补充 GitHub 返回的真实地址。
+模型下载地址： https://github.com/guouguo/bert-wenet-car-command/releases/tag/v1.0-models

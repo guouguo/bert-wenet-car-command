@@ -59,11 +59,27 @@ RKNN、ONNX、训练权重和其他大型二进制模型不进入 Git；仅 `mod
 
 ## GitHub upload
 
-待本地静态检查、Git 内容检查和 GitHub CLI 前置检查通过后填写。
+\-Repository: `guouguo/bert-wenet-car-command` 
+
+-Visibility: Private 
+
+-Branch: `main` 
+
+-Initial commit: `43effc2989bee84ca95e213b6921d4661d63efbd` 
+
+-RKNN models are excluded from Git history.
 
 ## Release assets
 
-待源码 push 成功后，仅上传上列四个实际运行依赖。
+Release: `v1.0-models`
+
+-bert_6L6H_nq.rknn` 
+
+-bert_6L6H_nq_gpio.rknn` 
+
+-distill2_encoder_T256_quan_mmsehybird099.rknn` 
+
+-distill2_ctc_T256.rknn`
 
 ## Manual follow-up
 

@@ -77,7 +77,11 @@ models/
 └── distill2_ctc_T256.rknn
 ```
 
-模型 Release 创建成功后，本节将补充由 GitHub 返回的真实下载地址。详见 `models/README.md`。
+运行所需的 RKNN 模型通过 GitHub Release 提供：
+
+https://github.com/guouguo/bert-wenet-car-command/releases/tag/v1.0-models
+
+下载后请将 4 个 `.rknn` 文件放入项目根目录下的 `models/` 目录。
 
 ## Dependencies
 
