@@ -49,6 +49,10 @@ flowchart LR
 
 `examples/` contains an earlier hybrid CPU/NPU implementation. The primary deployment uses RKNN for both WeNet and BERT.
 
+> Note: `examples/bert_wenet_rknn.py` is an archival hybrid CPU/NPU example.  
+>
+> Its historical ONNX/RKNN model files are not included in this repository.
+
 ## Hardware Platform
 
 - SoC: Rockchip RK3568
